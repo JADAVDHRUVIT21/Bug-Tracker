@@ -64,16 +64,18 @@ def add_project_member(
     project = get_project_or_404(project_id, db)
     check_project_manager(project, current_user)
 
+    email = str(member_data.email).strip().lower()
+
     user = (
         db.query(User)
-        .filter(User.id == member_data.user_id)
+        .filter(User.email == email)
         .first()
     )
 
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+            detail="No user found with this email address",
         )
 
     if not user.is_active:

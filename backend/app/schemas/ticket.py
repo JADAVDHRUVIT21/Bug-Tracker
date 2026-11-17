@@ -63,12 +63,18 @@ class TicketUpdate(BaseModel):
         return self
 
 
+class TicketReorder(BaseModel):
+    status: TicketStatus
+    position: int = Field(ge=0)
+
+
 class TicketResponse(BaseModel):
     id: int
     title: str
     description: str | None
     ticket_type: TicketType
     status: TicketStatus
+    position: int
     priority: TicketPriority
     project_id: int
     reporter_id: int

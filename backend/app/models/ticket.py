@@ -41,7 +41,6 @@ class Ticket(Base):
     id: Mapped[int] = mapped_column(
         Integer,
         primary_key=True,
-        index=True,
     )
 
     title: Mapped[str] = mapped_column(
@@ -64,6 +63,14 @@ class Ticket(Base):
     status: Mapped[TicketStatus] = mapped_column(
         Enum(TicketStatus, name="ticket_status"),
         default=TicketStatus.TODO,
+        nullable=False,
+        index=True,
+    )
+
+    # Position of the ticket inside its Kanban status column.
+    position: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
         nullable=False,
         index=True,
     )

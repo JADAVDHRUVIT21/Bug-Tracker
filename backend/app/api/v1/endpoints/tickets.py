@@ -1,8 +1,9 @@
+
 import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -16,6 +17,7 @@ from app.models.user import User, UserRole
 from app.schemas.ticket import (
     TicketCreate,
     TicketListResponse,
+    TicketReorder,
     TicketResponse,
     TicketUpdate,
 )
@@ -182,6 +184,82 @@ def get_accessible_ticket(
     return ticket
 
 
+def get_column_tickets(
+    project_id: int,
+    ticket_status: TicketStatus,
+    db: Session,
+) -> list[Ticket]:
+    return (
+        db.query(Ticket)
+        .filter(
+            Ticket.project_id == project_id,
+            Ticket.status == ticket_status,
+        )
+        .order_by(Ticket.position.asc(), Ticket.id.asc())
+        .all()
+    )
+
+
+def save_column_positions(tickets: list[Ticket]) -> None:
+    for index, ticket in enumerate(tickets):
+        ticket.position = index
+
+
+def move_ticket(
+    ticket: Ticket,
+    destination_status: TicketStatus,
+    destination_position: int,
+    db: Session,
+) -> None:
+    source_status = ticket.status
+
+    source_tickets = get_column_tickets(
+        ticket.project_id,
+        source_status,
+        db,
+    )
+
+    destination_tickets = (
+        source_tickets
+        if source_status == destination_status
+        else get_column_tickets(
+            ticket.project_id,
+            destination_status,
+            db,
+        )
+    )
+
+    source_tickets = [
+        item for item in source_tickets
+        if item.id != ticket.id
+    ]
+
+    if source_status == destination_status:
+        destination_tickets = source_tickets
+    else:
+        destination_tickets = [
+            item for item in destination_tickets
+            if item.id != ticket.id
+        ]
+
+    destination_position = max(
+        0,
+        min(destination_position, len(destination_tickets)),
+    )
+
+    ticket.status = destination_status
+
+    destination_tickets.insert(
+        destination_position,
+        ticket,
+    )
+
+    if source_status != destination_status:
+        save_column_positions(source_tickets)
+
+    save_column_positions(destination_tickets)
+
+
 @router.post(
     "/",
     response_model=TicketResponse,
@@ -206,11 +284,21 @@ def create_ticket(
         db,
     )
 
+    last_position = (
+        db.query(func.max(Ticket.position))
+        .filter(
+            Ticket.project_id == ticket_data.project_id,
+            Ticket.status == TicketStatus.TODO,
+        )
+        .scalar()
+    )
+
     ticket = Ticket(
         title=ticket_data.title,
         description=ticket_data.description,
         ticket_type=ticket_data.ticket_type,
         status=TicketStatus.TODO,
+        position=(last_position + 1) if last_position is not None else 0,
         priority=ticket_data.priority,
         project_id=ticket_data.project_id,
         reporter_id=current_user.id,
@@ -287,7 +375,12 @@ def list_tickets(
 
     tickets = (
         filtered_query
-        .order_by(Ticket.created_at.desc(), Ticket.id.desc())
+        .order_by(
+            Ticket.project_id.asc(),
+            Ticket.status.asc(),
+            Ticket.position.asc(),
+            Ticket.id.asc(),
+        )
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
@@ -315,6 +408,48 @@ def get_ticket(
         current_user,
         db,
     )
+
+
+@router.patch(
+    "/{ticket_id}/position",
+    response_model=TicketResponse,
+)
+def reorder_ticket(
+    ticket_id: int,
+    reorder_data: TicketReorder,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ticket = get_accessible_ticket(
+        ticket_id,
+        current_user,
+        db,
+    )
+
+    project = get_project_access(
+        ticket.project_id,
+        current_user,
+        db,
+    )
+
+    ensure_project_developer(project, current_user, db)
+
+    try:
+        move_ticket(
+            ticket=ticket,
+            destination_status=reorder_data.status,
+            destination_position=reorder_data.position,
+            db=db,
+        )
+
+        db.commit()
+        db.refresh(ticket)
+
+    except Exception:
+        db.rollback()
+        raise
+
+    return ticket
 
 
 @router.patch("/{ticket_id}", response_model=TicketResponse)
@@ -348,11 +483,30 @@ def update_ticket(
         )
 
     try:
+        new_status = update_data.pop("status", ticket.status)
+
         for field, value in update_data.items():
             setattr(ticket, field, value)
 
+        if new_status != ticket.status:
+            destination_tickets = get_column_tickets(
+                ticket.project_id,
+                new_status,
+                db,
+            )
+
+            destination_position = len(destination_tickets)
+
+            move_ticket(
+                ticket=ticket,
+                destination_status=new_status,
+                destination_position=destination_position,
+                db=db,
+            )
+
         db.commit()
         db.refresh(ticket)
+
     except Exception:
         db.rollback()
         raise
@@ -397,13 +551,11 @@ def delete_ticket(
     moved_files = []
 
     try:
-        # Move attachment files temporarily before deleting database records.
         for attachment in attachments:
             file_path = (
                 upload_directory / attachment.stored_filename
             ).resolve()
 
-            # Prevent deletion outside the configured upload directory.
             if file_path.parent != upload_directory:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -420,31 +572,26 @@ def delete_ticket(
             file_path.replace(temporary_path)
             moved_files.append((file_path, temporary_path))
 
-        # Delete the ticket and its related database records.
         db.delete(ticket)
         db.commit()
 
     except Exception:
         db.rollback()
 
-        # Restore files if the database transaction fails.
         for original_path, temporary_path in reversed(moved_files):
             try:
                 if temporary_path.exists():
                     temporary_path.replace(original_path)
             except OSError:
-                # Preserve the original exception.
                 pass
 
         raise
 
-    # Database deletion succeeded. Remove temporary attachment files.
     for original_path, temporary_path in moved_files:
         try:
             if temporary_path.exists():
                 temporary_path.unlink()
         except OSError:
-            # A leftover temporary file can be cleaned up later.
             pass
 
     return {

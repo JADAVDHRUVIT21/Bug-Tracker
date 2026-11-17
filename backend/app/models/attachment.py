@@ -1,4 +1,3 @@
-
 from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String
@@ -13,7 +12,6 @@ class Attachment(Base):
     id: Mapped[int] = mapped_column(
         Integer,
         primary_key=True,
-        index=True,
     )
 
     original_filename: Mapped[str] = mapped_column(

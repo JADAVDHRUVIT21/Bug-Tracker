@@ -33,10 +33,18 @@ def get_current_user(
 
         subject = payload.get("sub")
 
-        if subject is None:
+        # The JWT subject must be a positive numeric string.
+        if (
+            not isinstance(subject, str)
+            or not subject.isascii()
+            or not subject.isdigit()
+        ):
             raise credentials_exception
 
         user_id = int(subject)
+
+        if user_id <= 0:
+            raise credentials_exception
 
     except (JWTError, ValueError, TypeError):
         raise credentials_exception

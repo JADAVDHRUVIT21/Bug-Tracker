@@ -28,6 +28,46 @@ def get_my_user_profile(
     return current_user
 
 
+@router.patch("/me", response_model=UserResponse)
+def update_my_profile(
+    user_data: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    update_data = user_data.model_dump(exclude_unset=True)
+
+    # Users can update only their own full name.
+    allowed_fields = {"full_name"}
+
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No profile information provided",
+        )
+
+    if not set(update_data.keys()).issubset(allowed_fields):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only update your full name. Email cannot be changed.",
+        )
+
+    for field, value in update_data.items():
+        setattr(current_user, field, value)
+
+    try:
+        db.commit()
+        db.refresh(current_user)
+
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unable to update your profile",
+        )
+
+    return current_user
+
+
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user(
     user_id: int,

@@ -1,15 +1,29 @@
-fastapi
-uvicorn[standard]
-sqlalchemy
-psycopg[binary]
-alembic
+
+# FastAPI application
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+
+# Database
+sqlalchemy==2.1.8
+psycopg[binary]==3.3.8
+alembic==1.20.1
+
+# Authentication and security
 python-jose[cryptography]==3.5.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-pydantic
-pydantic-settings
-email-validator
-python-multipart
-python-dotenv
-pytest
-httpx
+slowapi==0.1.10
+
+# Validation and configuration
+pydantic==2.14.3
+pydantic-settings==2.16.2
+email-validator==2.3.0
+python-dotenv==1.2.4
+
+# File uploads
+python-multipart==0.0.33
+
+# HTTP clients and testing
+httpx==0.28.1
+httpx2==2.16.0
+pytest==9.2.0

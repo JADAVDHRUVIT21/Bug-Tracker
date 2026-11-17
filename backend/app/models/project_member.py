@@ -19,9 +19,8 @@ class ProjectMember(Base):
     )
 
     id: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-        index=True,
+         Integer,
+         primary_key=True,
     )
 
     project_id: Mapped[int] = mapped_column(

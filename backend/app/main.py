@@ -1,6 +1,10 @@
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.users import router as users_router
@@ -10,6 +14,8 @@ from app.api.v1.endpoints.tickets import router as tickets_router
 from app.api.v1.endpoints.comments import router as comments_router
 from app.api.v1.endpoints.attachments import router as attachments_router
 from app.core.config import settings
+from app.core.limiter import limiter
+from app.db.session import engine
 
 
 app = FastAPI(
@@ -17,6 +23,13 @@ app = FastAPI(
     description="Bug Tracker API for managing projects, bugs, tasks, and teams.",
     version="1.0.0",
     debug=settings.DEBUG,
+)
+
+# Configure rate limiting.
+app.state.limiter = limiter
+app.add_exception_handler(
+    RateLimitExceeded,
+    _rate_limit_exceeded_handler,
 )
 
 
@@ -39,9 +52,25 @@ def root():
 
 @app.get("/health", tags=["General"])
 def health_check():
-    return {
-        "status": "healthy",
-    }
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+
+        return {
+            "status": "healthy",
+            "api": "running",
+            "database": "connected",
+        }
+
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "status": "unhealthy",
+                "api": "running",
+                "database": "disconnected",
+            },
+        )
 
 
 app.include_router(

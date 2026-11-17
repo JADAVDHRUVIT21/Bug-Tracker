@@ -1,12 +1,8 @@
-
 from datetime import datetime
-
-from pydantic import BaseModel, ConfigDict, Field
-
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 class ProjectMemberCreate(BaseModel):
-    user_id: int = Field(gt=0)
-
+    email: EmailStr
 
 class ProjectMemberResponse(BaseModel):
     id: int
