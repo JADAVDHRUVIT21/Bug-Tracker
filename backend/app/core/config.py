@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://bug-tracker-bugbase.vercel.app"
+        
     ]
 
     model_config = SettingsConfigDict(
