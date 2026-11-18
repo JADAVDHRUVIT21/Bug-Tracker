@@ -1,8 +1,8 @@
-
 import uuid
+import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -21,7 +21,6 @@ from app.schemas.ticket import (
     TicketResponse,
     TicketUpdate,
 )
-
 
 router = APIRouter()
 
@@ -596,4 +595,93 @@ def delete_ticket(
 
     return {
         "message": "Ticket deleted successfully",
+    }
+
+
+# ==============================================================================
+# NEW ATTACHMENT UPLOAD ENDPOINT
+# ==============================================================================
+
+@router.post(
+    "/{ticket_id}/attachments",
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_attachment(
+    ticket_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # 1. Verify ticket exists and user has access
+    ticket = get_accessible_ticket(
+        ticket_id,
+        current_user,
+        db,
+    )
+
+    # 2. Validate file size (10MB limit)
+    MAX_SIZE = 10 * 1024 * 1024
+    file.file.seek(0, 2) # Move to end of file to get size
+    file_size = file.file.tell()
+    file.file.seek(0) # Reset to beginning
+
+    if file_size > MAX_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File is too large. Maximum size is 10MB.",
+        )
+
+    # 3. Generate unique filename
+    file_extension = Path(file.filename).suffix
+    unique_filename = f"{uuid.uuid4().hex}{file_extension}"
+    
+    # 4. Ensure upload directory exists & build path
+    upload_directory = Path(settings.UPLOAD_DIR).resolve()
+    upload_directory.mkdir(parents=True, exist_ok=True)
+    
+    file_path = upload_directory / unique_filename
+
+    # 5. Save file to disk
+    try:
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save file to disk",
+        )
+    finally:
+        file.file.close()
+
+    # 6. Save record to database
+    # Note: Assuming your Attachment model has these fields based on the delete route
+    new_attachment = Attachment(
+        ticket_id=ticket.id,
+        original_filename=file.filename,
+        stored_filename=unique_filename,
+        file_size=file_size,
+        uploaded_by=current_user.id,
+    )
+
+    try:
+        db.add(new_attachment)
+        db.commit()
+        db.refresh(new_attachment)
+    except Exception:
+        db.rollback()
+        # Cleanup file if DB save fails
+        if file_path.exists():
+            file_path.unlink()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save file metadata to database",
+        )
+
+    # 7. Return the data to the frontend
+    return {
+        "id": new_attachment.id,
+        "file_name": new_attachment.original_filename,
+        "file_size": new_attachment.file_size,
+        # Assuming you serve files via a /uploads static route in your main.py
+        "file_url": f"/uploads/{new_attachment.stored_filename}", 
     }

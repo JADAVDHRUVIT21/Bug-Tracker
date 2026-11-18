@@ -1,20 +1,10 @@
-
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Bug,
-  LayoutDashboard,
-  FolderKanban,
-  Ticket,
-  KanbanSquare,
-  Users,
-  Settings,
-  LogOut,
-  Menu,
-  X,
-  ChevronRight,
-  AlertTriangle,
+  Bug, LayoutDashboard, FolderKanban, Ticket, KanbanSquare,
+  Users, Settings, LogOut, Menu, X, ChevronRight, AlertTriangle
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -24,6 +14,7 @@ const MainLayout = () => {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const navigation = [
     { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
@@ -34,25 +25,41 @@ const MainLayout = () => {
     { name: "Settings", path: "/settings", icon: Settings },
   ];
 
-  // Open logout confirmation dialog
-  const handleLogout = () => {
-    setShowLogoutConfirm(true);
-  };
-
-  // Confirm logout
+  const handleLogoutClick = () => setShowLogoutConfirm(true);
+  
+  // Updated Logout Logic with Animations
   const confirmLogout = () => {
-    setShowLogoutConfirm(false);
-    setSidebarOpen(false);
-
-    logout();
-    navigate("/login", { replace: true });
+    setShowLogoutConfirm(false); // Close the modal
+    setIsLoggingOut(true);       // Show the full screen loader
+    
+    // Wait 1.5 seconds for the loading animation to play
+    setTimeout(() => {
+      setIsLoggingOut(false);
+      setSidebarOpen(false);
+      
+      // 1. Navigate FIRST with the toast message state
+      navigate("/login", { 
+        replace: true, 
+        state: { message: "Logged out successfully.", type: "logout" } 
+      });
+      
+      // 2. Then call logout() right after to clear the token
+      // We use a tiny timeout to ensure the navigation state is registered first
+      setTimeout(() => {
+        logout();
+      }, 100);
+      
+    }, 1500);
   };
 
   const closeSidebar = () => setSidebarOpen(false);
 
   return (
     <>
-      <div className="min-h-screen bg-slate-950 text-white">
+      <div 
+        className="min-h-screen transition-colors duration-300"
+        style={{ background: "var(--background)", color: "var(--text-primary)" }}
+      >
         {sidebarOpen && (
           <button
             type="button"
@@ -62,40 +69,35 @@ const MainLayout = () => {
           />
         )}
 
+        {/* SIDEBAR */}
         <aside
-          className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-800 bg-slate-900 transition-transform duration-300 ${
+          className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r transition-transform duration-300 ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           } lg:translate-x-0`}
+          style={{ 
+            borderColor: "var(--border-color)", 
+            background: "var(--card-background)" 
+          }}
         >
-          {/* Sidebar Header */}
-          <div className="flex h-16 items-center justify-between border-b border-slate-800 px-5">
+          <div className="flex h-16 items-center justify-between border-b px-5" style={{ borderColor: "var(--border-color)" }}>
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-blue-600 p-2">
+              <div className="rounded-lg bg-blue-600 p-2 text-white">
                 <Bug size={21} />
               </div>
               <span className="text-lg font-bold">Bug Tracker</span>
             </div>
-
-            <button
-              type="button"
-              onClick={closeSidebar}
-              className="text-slate-400 hover:text-white lg:hidden"
-              aria-label="Close menu"
-            >
+            <button type="button" onClick={closeSidebar} className="lg:hidden hover:opacity-70" aria-label="Close menu">
               <X size={21} />
             </button>
           </div>
 
-          {/* Navigation */}
           <div className="px-4 py-6">
-            <p className="mb-4 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <p className="mb-4 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
               Workspace
             </p>
-
             <nav className="space-y-1">
               {navigation.map((item) => {
                 const Icon = item.icon;
-
                 return (
                   <NavLink
                     key={item.path}
@@ -103,11 +105,12 @@ const MainLayout = () => {
                     onClick={closeSidebar}
                     className={({ isActive }) =>
                       `flex items-center justify-between rounded-lg px-3 py-3 text-sm font-medium transition ${
-                        isActive
-                          ? "bg-blue-600 text-white"
-                          : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                        isActive ? "bg-blue-600 text-white" : "hover:bg-black/5 dark:hover:bg-white/5"
                       }`
                     }
+                    style={({ isActive }) => ({
+                      color: isActive ? "#fff" : "var(--text-secondary)"
+                    })}
                   >
                     <span className="flex items-center gap-3">
                       <Icon size={19} />
@@ -120,27 +123,23 @@ const MainLayout = () => {
             </nav>
           </div>
 
-          {/* User Profile and Logout */}
-          <div className="mt-auto border-t border-slate-800 p-4">
+          <div className="mt-auto border-t p-4" style={{ borderColor: "var(--border-color)" }}>
             <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 font-semibold">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white font-semibold">
                 {user?.full_name?.charAt(0)?.toUpperCase() || "U"}
               </div>
-
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">
-                  {user?.full_name || "User"}
-                </p>
-                <p className="truncate text-xs capitalize text-slate-400">
+                <p className="truncate text-sm font-semibold">{user?.full_name || "User"}</p>
+                <p className="truncate text-xs capitalize" style={{ color: "var(--text-secondary)" }}>
                   {user?.role || "Member"}
                 </p>
               </div>
             </div>
-
             <button
               type="button"
-              onClick={handleLogout}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm text-slate-400 transition hover:bg-red-500/10 hover:text-red-400"
+              onClick={handleLogoutClick}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm transition hover:bg-red-500/10 hover:text-red-500"
+              style={{ color: "var(--text-secondary)" }}
             >
               <LogOut size={18} />
               Sign out
@@ -148,28 +147,34 @@ const MainLayout = () => {
           </div>
         </aside>
 
-        {/* Main Content */}
+        {/* MAIN CONTENT */}
         <div className="min-h-screen lg:pl-64">
-          <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-800 bg-slate-950/95 px-5 backdrop-blur">
+          <header 
+            className="sticky top-0 z-30 flex h-16 items-center justify-between border-b px-5 backdrop-blur"
+            style={{ 
+              borderColor: "var(--border-color)", 
+              background: "var(--card-background)" 
+            }}
+          >
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
-              className="text-slate-300 hover:text-white lg:hidden"
+              className="lg:hidden hover:opacity-70"
               aria-label="Open menu"
             >
               <Menu size={23} />
             </button>
 
-            <div className="hidden text-sm text-slate-400 sm:block">
+            <div className="hidden text-sm sm:block" style={{ color: "var(--text-secondary)" }}>
               Bug Tracker <span className="mx-2">/</span>
-              <span className="text-white">Workspace</span>
+              <span style={{ color: "var(--text-primary)", fontWeight: "500" }}>Workspace</span>
             </div>
 
             <div className="flex items-center gap-3">
-              <span className="hidden text-sm text-slate-300 sm:block">
+              <span className="hidden text-sm sm:block" style={{ color: "var(--text-primary)" }}>
                 {user?.full_name}
               </span>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white text-sm font-semibold">
                 {user?.full_name?.charAt(0)?.toUpperCase() || "U"}
               </div>
             </div>
@@ -181,65 +186,98 @@ const MainLayout = () => {
         </div>
       </div>
 
-      {/* iOS / macOS Style Logout Confirmation Dialog */}
-      {showLogoutConfirm &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/65 p-4 backdrop-blur-md"
-            onClick={() => setShowLogoutConfirm(false)}
-          >
-            <div
-              role="alertdialog"
-              aria-modal="true"
-              aria-labelledby="logout-confirm-title"
-              aria-describedby="logout-confirm-description"
-              className="w-full max-w-sm overflow-hidden rounded-[28px] border border-white/10 bg-[#202124] shadow-2xl shadow-black/50"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="px-7 pb-7 pt-8 text-center">
-                <div className="mx-auto mb-5 flex h-[68px] w-[68px] items-center justify-center rounded-[22px] bg-red-500/15 text-red-400">
-                  <AlertTriangle size={32} strokeWidth={1.8} />
-                </div>
-
-                <h2
-                  id="logout-confirm-title"
-                  className="text-xl font-semibold tracking-tight text-white"
+      {/* --- ANIMATIONS PORTAL --- */}
+      {createPortal(
+        <>
+          {/* Logout Confirmation Modal */}
+          <AnimatePresence>
+            {showLogoutConfirm && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/65 p-4 backdrop-blur-md"
+                onClick={() => setShowLogoutConfirm(false)}
+              >
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                  className="w-full max-w-sm overflow-hidden rounded-[28px] border shadow-2xl"
+                  style={{ 
+                    borderColor: "var(--border-color)", 
+                    background: "var(--card-background)",
+                    color: "var(--text-primary)" 
+                  }}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  Confirm Logout?
-                </h2>
+                  <div className="px-7 pb-7 pt-8 text-center">
+                    <div className="mx-auto mb-5 flex h-[68px] w-[68px] items-center justify-center rounded-[22px] bg-red-500/15 text-red-500">
+                      <AlertTriangle size={32} strokeWidth={1.8} />
+                    </div>
+                    <h2 className="text-xl font-semibold tracking-tight">Confirm Logout?</h2>
+                    <p className="mt-3 text-sm leading-6" style={{ color: "var(--text-secondary)" }}>
+                      Are you sure you want to log out of your Bug Tracker account? You will need to sign in again to access your workspace.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 border-t" style={{ borderColor: "var(--border-color)" }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowLogoutConfirm(false)}
+                      className="border-r px-4 py-[17px] text-sm font-medium transition hover:bg-black/5 dark:hover:bg-white/5"
+                      style={{ borderColor: "var(--border-color)", color: "var(--text-secondary)" }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmLogout}
+                      className="flex items-center justify-center gap-2 px-4 py-[17px] text-sm font-semibold text-red-500 transition hover:bg-red-500/10"
+                    >
+                      <LogOut size={16} />
+                      Confirm Logout
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-                <p
-                  id="logout-confirm-description"
-                  className="mt-3 text-sm leading-6 text-gray-400"
+          {/* Full Screen Logout Loader */}
+          <AnimatePresence>
+            {isLoggingOut && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[999999] flex flex-col items-center justify-center bg-black/60 backdrop-blur-md"
+              >
+                <motion.div 
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="flex flex-col items-center rounded-3xl border p-8 shadow-2xl"
+                  style={{ background: "var(--card-background)", borderColor: "var(--border-color)" }}
                 >
-                  Are you sure you want to log out of your Bug Tracker
-                  account? You will need to sign in again to access your
-                  workspace.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 border-t border-white/10">
-                <button
-                  type="button"
-                  onClick={() => setShowLogoutConfirm(false)}
-                  className="border-r border-white/10 px-4 py-[17px] text-sm font-medium text-gray-300 transition hover:bg-white/5"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="button"
-                  onClick={confirmLogout}
-                  className="flex items-center justify-center gap-2 px-4 py-[17px] text-sm font-semibold text-red-400 transition hover:bg-red-500/10"
-                >
-                  <LogOut size={16} />
-                  Confirm Logout
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
+                  <div className="relative flex h-20 w-20 items-center justify-center">
+                    <motion.div 
+                      animate={{ rotate: 360 }} 
+                      transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                      className="absolute inset-0 rounded-full border-4 border-red-500/20 border-t-red-500"
+                    />
+                    <LogOut size={32} className="text-red-500" />
+                  </div>
+                  <h3 className="mt-6 text-xl font-bold" style={{ color: "var(--text-primary)" }}>Signing you out...</h3>
+                  <p className="mt-2 text-sm" style={{ color: "var(--text-secondary)" }}>
+                    Cleaning up your secure session.
+                  </p>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>,
+        document.body
+      )}
     </>
   );
 };

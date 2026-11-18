@@ -20,11 +20,20 @@ const ticketService = {
     return response.data;
   },
 
-  // Update a ticket
+  // Update ticket details or status
   updateTicket: async (ticketId, ticketData) => {
     const response = await api.patch(
       `/tickets/${ticketId}`,
       ticketData
+    );
+    return response.data;
+  },
+
+  // Update ticket status and position on the Kanban board
+  updateTicketPosition: async (ticketId, positionData) => {
+    const response = await api.patch(
+      `/tickets/${ticketId}/position`,
+      positionData
     );
     return response.data;
   },

@@ -1,6 +1,7 @@
-
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles  # <-- ADD THIS IMPORT
+from pathlib import Path
 from sqlalchemy import text
 
 from slowapi import _rate_limit_exceeded_handler
@@ -40,6 +41,14 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+# ==============================================================================
+# MOUNT STATIC FILES FOR UPLOADS
+# ==============================================================================
+# Create the upload directory if it doesn't exist
+Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
+# Mount the directory so files can be accessed via /uploads/filename
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 
 @app.get("/", tags=["General"])

@@ -1,11 +1,9 @@
-
 import uuid
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import settings
-
 
 ALLOWED_EXTENSIONS = {
     ".png",
@@ -62,13 +60,17 @@ async def validate_upload_file(file: UploadFile) -> tuple[str, int]:
             detail="Invalid filename",
         )
 
-    if file.content_type not in ALLOWED_CONTENT_TYPES:
+    # ⚠️ THE FIX: Safely check if the content type starts with the expected type
+    # This allows "text/plain; charset=utf-8" to pass for a .txt file
+    content_type = file.content_type or ""
+    if not any(content_type.startswith(allowed) for allowed in ALLOWED_CONTENT_TYPES):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File content type is not allowed",
         )
 
-    if file.content_type != EXPECTED_CONTENT_TYPES[extension]:
+    expected_type = EXPECTED_CONTENT_TYPES[extension]
+    if not content_type.startswith(expected_type):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File extension and content type do not match",
@@ -88,7 +90,7 @@ async def validate_upload_file(file: UploadFile) -> tuple[str, int]:
     if file_size > settings.MAX_UPLOAD_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="File size exceeds the 5 MB limit",
+            detail=f"File size exceeds the {settings.MAX_UPLOAD_SIZE // (1024 * 1024)} MB limit",
         )
 
     signatures = FILE_SIGNATURES.get(extension)

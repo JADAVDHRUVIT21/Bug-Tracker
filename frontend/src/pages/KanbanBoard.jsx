@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useState } from "react";
 
 import {
@@ -41,10 +40,10 @@ const columns = [
 ];
 
 const priorityStyles = {
-  low: "bg-slate-700 text-slate-300",
-  medium: "bg-blue-500/15 text-blue-400",
-  high: "bg-orange-500/15 text-orange-400",
-  critical: "bg-red-500/15 text-red-400",
+  low: "bg-[var(--surface-hover)] text-[var(--text-secondary)]",
+  medium: "bg-blue-500/15 text-blue-500 dark:text-blue-400",
+  high: "bg-orange-500/15 text-orange-500 dark:text-orange-400",
+  critical: "bg-red-500/15 text-red-500 dark:text-red-400",
 };
 
 function getErrorMessage(error) {
@@ -125,14 +124,14 @@ function TicketCard({ ticket, dragging = false }) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`shrink-0 rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-sm ${
+      className={`shrink-0 rounded-xl border p-4 shadow-sm transition-colors ${
         dragging
-          ? "rotate-2 border-blue-500 shadow-xl"
-          : "hover:border-slate-500"
+          ? "rotate-2 border-[var(--accent)] bg-[var(--card-background)] shadow-xl"
+          : "border-[var(--border-color)] bg-[var(--card-background)] hover:border-[var(--text-muted)]"
       }`}
     >
       <div className="mb-3 flex items-start justify-between gap-2">
-        <span className="text-xs font-semibold text-slate-400">
+        <span className="text-xs font-semibold text-[var(--text-secondary)]">
           #{ticket.id}
         </span>
 
@@ -140,7 +139,7 @@ function TicketCard({ ticket, dragging = false }) {
           type="button"
           {...attributes}
           {...listeners}
-          className="cursor-grab rounded p-1 text-slate-500 transition hover:bg-slate-800 hover:text-white active:cursor-grabbing"
+          className="cursor-grab rounded p-1 text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] active:cursor-grabbing"
           aria-label="Drag ticket"
           title="Drag to change position or status"
         >
@@ -148,12 +147,12 @@ function TicketCard({ ticket, dragging = false }) {
         </button>
       </div>
 
-      <h3 className="mb-2 break-words text-sm font-semibold text-white">
+      <h3 className="mb-2 break-words text-sm font-semibold text-[var(--text-primary)]">
         {ticket.title}
       </h3>
 
       {ticket.description && (
-        <p className="mb-3 line-clamp-2 text-xs leading-5 text-slate-400">
+        <p className="mb-3 line-clamp-2 text-xs leading-5 text-[var(--text-secondary)]">
           {ticket.description}
         </p>
       )}
@@ -167,12 +166,12 @@ function TicketCard({ ticket, dragging = false }) {
           {ticket.priority || "medium"}
         </span>
 
-        <span className="rounded-full bg-slate-800 px-2.5 py-1 text-xs font-medium capitalize text-slate-300">
+        <span className="rounded-full bg-[var(--surface-hover)] px-2.5 py-1 text-xs font-medium capitalize text-[var(--text-secondary)]">
           {ticket.ticket_type || "bug"}
         </span>
       </div>
 
-      <div className="border-t border-slate-700 pt-3 text-xs text-slate-400">
+      <div className="border-t border-[var(--border-color)] pt-3 text-xs text-[var(--text-secondary)]">
         <p>Project ID: {ticket.project_id}</p>
 
         <p className="mt-1">
@@ -202,20 +201,20 @@ function KanbanColumn({ column, tickets }) {
       ref={setNodeRef}
       className={`flex h-[420px] min-w-0 flex-col rounded-xl border p-3 transition-colors ${
         isOver
-          ? "border-blue-500 bg-blue-500/10"
-          : "border-slate-800 bg-slate-900"
+          ? "border-[var(--accent)] bg-[var(--accent-bg)]"
+          : "border-[var(--border-color)] bg-[var(--card-background)]"
       }`}
     >
       <div className="mb-4 flex shrink-0 items-center justify-between">
         <div className="flex items-center gap-2">
-          <Icon size={18} className="text-slate-400" />
+          <Icon size={18} className="text-[var(--text-secondary)]" />
 
-          <h2 className="text-sm font-bold text-white">
+          <h2 className="text-sm font-bold text-[var(--text-primary)]">
             {column.title}
           </h2>
         </div>
 
-        <span className="rounded-full bg-slate-800 px-2.5 py-1 text-xs font-semibold text-slate-300">
+        <span className="rounded-full bg-[var(--surface-hover)] px-2.5 py-1 text-xs font-semibold text-[var(--text-secondary)]">
           {tickets.length}
         </span>
       </div>
@@ -225,10 +224,10 @@ function KanbanColumn({ column, tickets }) {
         strategy={verticalListSortingStrategy}
       >
         <div
-          className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-slate-800"
+          className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin"
           style={{
             scrollbarWidth: "thin",
-            scrollbarColor: "#475569 #1e293b",
+            scrollbarColor: "var(--text-muted) var(--surface-hover)",
           }}
         >
           {tickets.map((ticket) => (
@@ -237,10 +236,10 @@ function KanbanColumn({ column, tickets }) {
 
           {tickets.length === 0 && (
             <div
-              className={`flex min-h-[150px] items-center justify-center rounded-lg border-2 border-dashed p-6 text-center text-xs ${
+              className={`flex min-h-[150px] items-center justify-center rounded-lg border-2 border-dashed p-6 text-center text-xs transition-colors ${
                 isOver
-                  ? "border-blue-500 text-blue-400"
-                  : "border-slate-700 text-slate-500"
+                  ? "border-[var(--accent)] text-[var(--accent)]"
+                  : "border-[var(--border-color)] text-[var(--text-muted)]"
               }`}
             >
               Drop tickets here
@@ -447,85 +446,87 @@ export default function KanbanBoard() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[300px] items-center justify-center">
-        <Loader2 className="animate-spin text-blue-500" size={32} />
+      <div className="flex min-h-screen items-center justify-center bg-[var(--bg-color)]">
+        <Loader2 className="animate-spin text-[var(--accent)]" size={32} />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 p-5 text-slate-100 sm:p-8">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-white">
-            Kanban Board
-          </h1>
+    <div className="min-h-screen bg-[var(--bg-color)] p-5 text-[var(--text-primary)] sm:p-8 transition-colors duration-250">
+      <div className="mx-auto max-w-7xl space-y-6">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-[var(--text-primary)]">
+              Kanban Board
+            </h1>
 
-          <p className="mt-1 text-sm text-slate-400">
-            Organize and track your tickets by status.
-          </p>
-        </div>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
+              Organize and track your tickets by status.
+            </p>
+          </div>
 
-        <button
-          type="button"
-          onClick={fetchTickets}
-          disabled={loading || updating}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <RefreshCw
-            size={16}
-            className={loading ? "animate-spin" : ""}
-          />
-          Refresh
-        </button>
-      </div>
-
-      {/* Updating Status */}
-      {updating && (
-        <div className="flex items-center gap-2 text-sm text-blue-400">
-          <Loader2 size={16} className="animate-spin" />
-          Updating ticket status...
-        </div>
-      )}
-
-      {/* Error */}
-      {error && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
-          {error}
-        </div>
-      )}
-
-      {/* Board */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={kanbanCollisionDetection}
-        onDragStart={handleDragStart}
-        onDragCancel={handleDragCancel}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {columns.map((column) => (
-            <KanbanColumn
-              key={column.id}
-              column={column}
-              tickets={ticketsByStatus(column.id)}
+          <button
+            type="button"
+            onClick={fetchTickets}
+            disabled={loading || updating}
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--card-background)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCw
+              size={16}
+              className={loading ? "animate-spin" : ""}
             />
-          ))}
+            Refresh
+          </button>
         </div>
 
-        <DragOverlay>
-          {activeTicket ? (
-            <TicketCard ticket={activeTicket} dragging />
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+        {/* Updating Status */}
+        {updating && (
+          <div className="flex items-center gap-2 text-sm text-[var(--accent)]">
+            <Loader2 size={16} className="animate-spin" />
+            Updating ticket status...
+          </div>
+        )}
 
-      {/* Footer */}
-      <div className="flex items-center gap-2 border-t border-slate-800 pt-4 text-xs text-slate-500">
-        <GripVertical size={15} />
-        Drag tickets above or below other tickets to change their
-        position. Drop into another column to update their status.
+        {/* Error */}
+        {error && (
+          <div className="rounded-lg border border-[var(--danger-color)] bg-[var(--danger-light-bg)] p-3 text-sm text-[var(--danger-color)]">
+            {error}
+          </div>
+        )}
+
+        {/* Board */}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={kanbanCollisionDetection}
+          onDragStart={handleDragStart}
+          onDragCancel={handleDragCancel}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {columns.map((column) => (
+              <KanbanColumn
+                key={column.id}
+                column={column}
+                tickets={ticketsByStatus(column.id)}
+              />
+            ))}
+          </div>
+
+          <DragOverlay>
+            {activeTicket ? (
+              <TicketCard ticket={activeTicket} dragging />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+
+        {/* Footer */}
+        <div className="flex items-center gap-2 border-t border-[var(--border-color)] pt-4 text-xs text-[var(--text-muted)]">
+          <GripVertical size={15} />
+          Drag tickets above or below other tickets to change their
+          position. Drop into another column to update their status.
+        </div>
       </div>
     </div>
   );
