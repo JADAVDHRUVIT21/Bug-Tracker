@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles  # <-- ADD THIS IMPORT
+from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from sqlalchemy import text
 
@@ -33,13 +33,14 @@ app.add_exception_handler(
     _rate_limit_exceeded_handler,
 )
 
-
+# --- UPDATED CORS CONFIGURATION ---
+# Hardcoded to allow ALL origins and methods to bypass any environment variable issues.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ==============================================================================
