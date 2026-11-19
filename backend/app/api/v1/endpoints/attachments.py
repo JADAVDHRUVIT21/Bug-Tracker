@@ -1,7 +1,9 @@
 
-import uuid
+import os
 from pathlib import Path
+from urllib.parse import quote
 
+from dotenv import load_dotenv
 from fastapi import (
     APIRouter,
     Depends,
@@ -10,10 +12,9 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.core.dependencies import get_current_user
 from app.db.dependencies import get_db
 from app.models.attachment import Attachment
@@ -27,12 +28,78 @@ from app.utils.file_upload import validate_upload_file
 
 router = APIRouter()
 
+load_dotenv()
+
+SUPABASE_BUCKET = os.getenv(
+    "SUPABASE_STORAGE_BUCKET",
+    "bug-tracker-attachments",
+)
+
+_storage_client = None
+
+
+def get_storage_client():
+    global _storage_client
+
+    if _storage_client is not None:
+        return _storage_client
+
+    supabase_url = os.getenv("SUPABASE_URL", "").strip()
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+
+    if not supabase_url or not supabase_key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Supabase Storage is not configured.",
+        )
+
+    try:
+        from supabase import create_client
+
+        _storage_client = create_client(
+            supabase_url,
+            supabase_key,
+        )
+
+        return _storage_client
+
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Supabase package is not installed.",
+        ) from exc
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not initialize Supabase Storage.",
+        ) from exc
+
+
+def get_storage_bucket():
+    return get_storage_client().storage.from_(SUPABASE_BUCKET)
+
+
+def get_storage_path(attachment: Attachment) -> str:
+    stored_path = (attachment.file_path or "").strip()
+
+    # New attachments store their Supabase object key in file_path.
+    if stored_path and not Path(stored_path).is_absolute():
+        return stored_path.replace("\\", "/")
+
+    # Fallback for older database records.
+    return (
+        f"tickets/{attachment.ticket_id}/"
+        f"{attachment.stored_filename}"
+    )
+
 
 def get_accessible_ticket(
     ticket_id: int,
     current_user: User,
     db: Session,
 ) -> Ticket:
+
     ticket = (
         db.query(Ticket)
         .filter(Ticket.id == ticket_id)
@@ -83,6 +150,7 @@ def get_attachment_or_404(
     attachment_id: int,
     db: Session,
 ) -> Attachment:
+
     attachment = (
         db.query(Attachment)
         .filter(Attachment.id == attachment_id)
@@ -98,22 +166,6 @@ def get_attachment_or_404(
     return attachment
 
 
-def get_attachment_file_path(attachment: Attachment) -> Path:
-    upload_directory = Path(settings.UPLOAD_DIR).resolve()
-
-    file_path = (
-        upload_directory / attachment.stored_filename
-    ).resolve()
-
-    if file_path.parent != upload_directory:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid attachment file path",
-        )
-
-    return file_path
-
-
 @router.post(
     "/tickets/{ticket_id}",
     response_model=AttachmentResponse,
@@ -125,6 +177,7 @@ async def upload_attachment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+
     ticket = get_accessible_ticket(
         ticket_id,
         current_user,
@@ -139,13 +192,6 @@ async def upload_attachment(
 
     stored_filename, file_size = await validate_upload_file(file)
 
-    upload_directory = Path(settings.UPLOAD_DIR)
-    upload_directory.mkdir(parents=True, exist_ok=True)
-
-    file_path = (
-        upload_directory / stored_filename
-    ).resolve()
-
     try:
         content = await file.read()
 
@@ -155,32 +201,64 @@ async def upload_attachment(
                 detail="File size validation failed",
             )
 
-        with file_path.open("xb") as destination:
-            destination.write(content)
+        original_filename = (
+            (file.filename or "attachment")
+            .replace("\\", "/")
+            .rsplit("/", 1)[-1]
+        )
+
+        content_type = (
+            file.content_type or "application/octet-stream"
+        )
+
+        storage_path = (
+            f"tickets/{ticket.id}/{stored_filename}"
+        )
+
+        bucket = get_storage_bucket()
+
+        try:
+            bucket.upload(
+                storage_path,
+                content,
+                file_options={
+                    "content-type": content_type,
+                    "upsert": "false",
+                },
+            )
+
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Could not upload attachment to Supabase Storage.",
+            ) from exc
 
         attachment = Attachment(
-            original_filename=Path(file.filename or "").name,
+            original_filename=original_filename,
             stored_filename=stored_filename,
-            file_path=str(file_path),
-            content_type=file.content_type or "application/octet-stream",
+            file_path=storage_path,
+            content_type=content_type,
             file_size=file_size,
             ticket_id=ticket.id,
             uploaded_by=current_user.id,
         )
 
-        db.add(attachment)
-        db.commit()
-        db.refresh(attachment)
+        try:
+            db.add(attachment)
+            db.commit()
+            db.refresh(attachment)
+
+        except Exception:
+            db.rollback()
+
+            try:
+                bucket.remove([storage_path])
+            except Exception:
+                pass
+
+            raise
 
         return attachment
-
-    except Exception:
-        db.rollback()
-
-        if file_path.exists():
-            file_path.unlink()
-
-        raise
 
     finally:
         await file.close()
@@ -195,7 +273,12 @@ def list_attachments(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    get_accessible_ticket(ticket_id, current_user, db)
+
+    get_accessible_ticket(
+        ticket_id,
+        current_user,
+        db,
+    )
 
     return (
         db.query(Attachment)
@@ -211,7 +294,11 @@ def download_attachment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    attachment = get_attachment_or_404(attachment_id, db)
+
+    attachment = get_attachment_or_404(
+        attachment_id,
+        db,
+    )
 
     get_accessible_ticket(
         attachment.ticket_id,
@@ -219,18 +306,46 @@ def download_attachment(
         db,
     )
 
-    file_path = get_attachment_file_path(attachment)
+    storage_path = get_storage_path(attachment)
 
-    if not file_path.is_file():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Attachment file is missing from storage",
+    try:
+        file_content = get_storage_bucket().download(
+            storage_path
         )
 
-    return FileResponse(
-        path=file_path,
-        media_type=attachment.content_type,
-        filename=attachment.original_filename,
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "Attachment file was not found in Supabase Storage. "
+                "Previously uploaded files must be uploaded again."
+            ),
+        ) from exc
+
+    if file_content is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Attachment file was not found in Supabase Storage.",
+        )
+
+    safe_filename = (
+        (attachment.original_filename or "attachment")
+        .replace("\\", "/")
+        .rsplit("/", 1)[-1]
+    )
+
+    return Response(
+        content=file_content,
+        media_type=(
+            attachment.content_type or "application/octet-stream"
+        ),
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename*=UTF-8''{quote(safe_filename)}"
+            ),
+            "Content-Length": str(len(file_content)),
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -243,7 +358,11 @@ def delete_attachment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    attachment = get_attachment_or_404(attachment_id, db)
+
+    attachment = get_attachment_or_404(
+        attachment_id,
+        db,
+    )
 
     ticket = get_accessible_ticket(
         attachment.ticket_id,
@@ -258,11 +377,15 @@ def delete_attachment(
     )
 
     is_admin = current_user.role == UserRole.ADMIN
+
     is_project_owner = (
         project is not None
         and project.owner_id == current_user.id
     )
-    is_uploader = attachment.uploaded_by == current_user.id
+
+    is_uploader = (
+        attachment.uploaded_by == current_user.id
+    )
 
     if not (is_admin or is_project_owner or is_uploader):
         raise HTTPException(
@@ -270,34 +393,54 @@ def delete_attachment(
             detail="You cannot delete this attachment",
         )
 
-    file_path = get_attachment_file_path(attachment)
+    storage_path = get_storage_path(attachment)
+    bucket = get_storage_bucket()
 
-    temporary_path = (
-        file_path.parent / f".{uuid.uuid4().hex}.deleting"
-    )
-
-    file_was_moved = False
+    original_content = None
 
     try:
-        if file_path.is_file():
-            file_path.replace(temporary_path)
-            file_was_moved = True
+        try:
+            original_content = bucket.download(storage_path)
+        except Exception:
+            # Old attachment may not exist in Supabase.
+            original_content = None
+
+        try:
+            bucket.remove([storage_path])
+
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Could not delete attachment from Supabase Storage.",
+            ) from exc
 
         db.delete(attachment)
         db.commit()
 
-    except Exception:
+    except Exception as exc:
         db.rollback()
 
-        if file_was_moved and temporary_path.exists():
-            temporary_path.replace(file_path)
+        # Restore the file if the database deletion fails.
+        if original_content is not None:
+            try:
+                bucket.upload(
+                    storage_path,
+                    original_content,
+                    file_options={
+                        "content-type": (
+                            attachment.content_type
+                            or "application/octet-stream"
+                        ),
+                        "upsert": "true",
+                    },
+                )
+            except Exception:
+                pass
 
-        raise
+        if isinstance(exc, HTTPException):
+            raise
 
-    if file_was_moved and temporary_path.exists():
-        try:
-            temporary_path.unlink()
-        except OSError:
-            # The database record is deleted. A leftover temporary
-            # file can be cleaned up by a storage maintenance task.
-            pass
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not delete attachment record.",
+        ) from exc
