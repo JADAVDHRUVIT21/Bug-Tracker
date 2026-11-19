@@ -60,7 +60,7 @@ def authenticate_user(
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
 )
-@limiter.limit("3/hour")
+@limiter.limit("10/hour")
 def register_user(
     request: Request,
     user_data: UserCreate,
